@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.eunpyeong-massage.example.com/sitemap.xml

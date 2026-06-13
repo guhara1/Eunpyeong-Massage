@@ -16,11 +16,24 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import datetime
+
 from content import PAGES
-from content.site import (BASE_URL, BRAND, NAV, PHONE, PHONE_DISPLAY)
+from content.site import (BASE_URL, BRAND, NAV, PHONE, PHONE_DISPLAY,
+                          NAVER_VERIFICATION, GOOGLE_VERIFICATION, INDEXNOW_KEY)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MIN_INDEX_CHARS = 2000
+BUILD_DATE = datetime.date.today().isoformat()
+
+
+def verification_meta() -> str:
+    tags = []
+    if NAVER_VERIFICATION:
+        tags.append(f'<meta name="naver-site-verification" content="{NAVER_VERIFICATION}">')
+    if GOOGLE_VERIFICATION:
+        tags.append(f'<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}">')
+    return "\n".join(tags) + ("\n" if tags else "")
 
 
 def text_length(body_html: str) -> int:
@@ -140,10 +153,12 @@ def render_page(page: dict) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
+{verification_meta()}<title>{title}</title>
 <meta name="description" content="{desc}">
 {robots}
 <link rel="canonical" href="{canonical}">
+<link rel="alternate" type="application/rss+xml" title="{BRAND} 매거진" href="{BASE_URL.rstrip('/')}/rss.xml">
+<link rel="sitemap" type="application/xml" href="{BASE_URL.rstrip('/')}/sitemap.xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
@@ -251,10 +266,31 @@ def render_page(page: dict) -> str:
 """
 
 
+def _sitemap_meta(path: str):
+    """경로 성격에 따른 changefreq·priority 결정."""
+    hubs = {"", "eunpyeong/", "eunpyeong/stations/", "themes/", "courses/",
+            "magazine/", "massage/", "reservation/", "guide/", "reviews/", "support/"}
+    if path == "":
+        return "daily", "1.0"
+    if path in hubs:
+        return "weekly", "0.8"
+    if path.startswith("magazine/"):
+        return "monthly", "0.6"
+    return "weekly", "0.7"
+
+
+def _rfc822(date_str: str) -> str:
+    """'YYYY-MM-DD' → RSS pubDate (KST 09:00 기준)."""
+    d = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+    return d.strftime("%a, %d %b %Y") + " 09:00:00 +0900"
+
+
 def build() -> None:
     report = []
-    sitemap_urls = []
+    sitemap_entries = []   # (url, lastmod, changefreq, priority)
+    feed_items = []        # 매거진 RSS 아이템
 
+    base = BASE_URL.rstrip("/")
     for page in PAGES:
         path = page["path"]  # "" 또는 "eunpyeong/bulgwang-dong/" 형태
         out_dir = os.path.join(ROOT, path)
@@ -265,27 +301,73 @@ def build() -> None:
 
         chars = text_length(page["body"])
         noindex = page.get("noindex", False) or chars < MIN_INDEX_CHARS
+        url = base + "/" + path
+        lastmod = page.get("date", BUILD_DATE)
         if not noindex:
-            sitemap_urls.append(BASE_URL.rstrip("/") + "/" + path)
+            changefreq, priority = _sitemap_meta(path)
+            sitemap_entries.append((url, lastmod, changefreq, priority))
+            # 매거진 글은 RSS 피드에도 싣는다 (허브 제외)
+            if path.startswith("magazine/") and path != "magazine/" and page.get("date"):
+                feed_items.append({
+                    "title": page["title"].split(" | ")[0],
+                    "url": url,
+                    "desc": page["desc"],
+                    "date": page["date"],
+                })
         report.append((path or "/", chars, "noindex" if noindex else "index"))
 
-    # sitemap.xml
-    urls = "\n".join(
-        f"  <url><loc>{u}</loc></url>" for u in sitemap_urls
+    # sitemap.xml (lastmod·changefreq·priority 포함)
+    rows = "\n".join(
+        f"  <url><loc>{u}</loc><lastmod>{lm}</lastmod>"
+        f"<changefreq>{cf}</changefreq><priority>{pr}</priority></url>"
+        for u, lm, cf, pr in sitemap_entries
     )
     with open(os.path.join(ROOT, "sitemap.xml"), "w", encoding="utf-8") as f:
         f.write(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-            f"{urls}\n</urlset>\n"
+            f"{rows}\n</urlset>\n"
         )
 
-    # robots.txt
+    # rss.xml (매거진 피드 — 네이버·구글 빠른 발견용)
+    feed_items.sort(key=lambda x: x["date"], reverse=True)
+    last_build = _rfc822(feed_items[0]["date"]) if feed_items else _rfc822(BUILD_DATE)
+    items_xml = "\n".join(
+        "    <item>"
+        f"<title>{html.escape(it['title'])}</title>"
+        f"<link>{it['url']}</link>"
+        f"<guid isPermaLink=\"true\">{it['url']}</guid>"
+        f"<description>{html.escape(it['desc'])}</description>"
+        f"<pubDate>{_rfc822(it['date'])}</pubDate>"
+        "</item>"
+        for it in feed_items
+    )
+    with open(os.path.join(ROOT, "rss.xml"), "w", encoding="utf-8") as f:
+        f.write(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n'
+            "  <channel>\n"
+            f"    <title>{html.escape(BRAND)} 매거진</title>\n"
+            f"    <link>{base}/magazine/</link>\n"
+            f'    <atom:link href="{base}/rss.xml" rel="self" type="application/rss+xml"/>\n'
+            "    <description>은평 출장마사지·홈타이 이용 가이드와 관리 정보</description>\n"
+            "    <language>ko</language>\n"
+            f"    <lastBuildDate>{last_build}</lastBuildDate>\n"
+            f"{items_xml}\n"
+            "  </channel>\n</rss>\n"
+        )
+
+    # robots.txt (sitemap 위치 명시)
     with open(os.path.join(ROOT, "robots.txt"), "w", encoding="utf-8") as f:
         f.write(
             "User-agent: *\nAllow: /\n\n"
-            f"Sitemap: {BASE_URL.rstrip('/')}/sitemap.xml\n"
+            f"Sitemap: {base}/sitemap.xml\n"
         )
+
+    # IndexNow 키 파일 — /<KEY>.txt 에 키 문자열만 담는다.
+    if INDEXNOW_KEY:
+        with open(os.path.join(ROOT, f"{INDEXNOW_KEY}.txt"), "w", encoding="utf-8") as f:
+            f.write(INDEXNOW_KEY + "\n")
 
     # .nojekyll (GitHub Pages)
     open(os.path.join(ROOT, ".nojekyll"), "w").close()
@@ -295,7 +377,8 @@ def build() -> None:
     for p, c, r in sorted(report):
         flag = "" if (r == "noindex" or MIN_INDEX_CHARS <= c <= 2500) else "  ⚠"
         print(f"{p.ljust(width)}  {str(c).rjust(5)}  {r}{flag}")
-    print(f"\n{len(report)} pages built, {len(sitemap_urls)} in sitemap.")
+    print(f"\n{len(report)} pages built, {len(sitemap_entries)} in sitemap, "
+          f"{len(feed_items)} in RSS feed.")
 
 
 if __name__ == "__main__":

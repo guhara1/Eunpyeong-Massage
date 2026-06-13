@@ -1,10 +1,17 @@
 # 사이트 공통 설정
-# 배포 도메인 확정 후 BASE_URL 을 실제 도메인으로 변경하세요.
-BASE_URL = "https://www.eunpyeong-massage.example.com"
+BASE_URL = "https://eunpyeong-massage.pages.dev"
 
 BRAND = "간다GO"
 PHONE = "0508-202-4719"
 PHONE_DISPLAY = "0508-202-4719"
+
+# 검색엔진 소유확인 메타 (있을 때만 <head>에 출력)
+NAVER_VERIFICATION = "a223edb54a8c0adb9484a5aedc3a1f3afab5533c"
+GOOGLE_VERIFICATION = ""  # Google Search Console 확인 코드(있으면 입력)
+
+# IndexNow 키 — 빌드 시 /<KEY>.txt 키 파일을 자동 생성한다.
+# (IndexNow 참여: Bing, Naver, Yandex, Seznam 등)
+INDEXNOW_KEY = "e1e3f963374737efc3bcccd03be66c08"
 
 # 상단 메뉴 — 하위 메뉴에는 키워드를 반복하지 않고 지역명·역명만 표시한다.
 NAV = [

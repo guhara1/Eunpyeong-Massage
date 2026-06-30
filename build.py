@@ -9,6 +9,7 @@ content/ 패키지의 페이지 정의를 읽어 정적 HTML을 생성한다.
   - 지역+역+테마 조합 경로는 생성 자체가 불가능한 구조
 """
 import html
+import json
 import os
 import re
 import shutil
@@ -21,6 +22,8 @@ import datetime
 from content import PAGES
 from content.site import (BASE_URL, BRAND, NAV, PHONE, PHONE_DISPLAY,
                           NAVER_VERIFICATION, GOOGLE_VERIFICATION, INDEXNOW_KEY)
+from content.reviews_data import (REVIEWS, REVIEW_COUNT, RATING_VALUE,
+                                  RATING_BEST, RATING_WORST)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MIN_INDEX_CHARS = 2000
@@ -117,6 +120,232 @@ def render_toc(items) -> str:
     )
 
 
+# ────────────────────────────────────────────────────────────
+#  구조화 데이터(JSON-LD) — 페이지 종류별 일괄 생성
+# ────────────────────────────────────────────────────────────
+BASE = BASE_URL.rstrip("/")
+_TEL = PHONE
+_OG_IMG = f"{BASE}/assets/og-image.png"
+
+# 사이트 전역 사업자 식별 정보 (모든 LocalBusiness 노드의 공통 골격)
+_BIZ_CORE = {
+    "@type": "HealthAndBeautyBusiness",
+    "name": BRAND,
+    "telephone": _TEL,
+    "image": _OG_IMG,
+    "priceRange": "₩90,000 - ₩180,000",
+    "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday",
+                      "Friday", "Saturday", "Sunday"],
+        "opens": "00:00", "closes": "23:59",
+    },
+    "areaServed": {"@type": "AdministrativeArea", "name": "서울특별시 은평구"},
+}
+
+_AGG_RATING = {
+    "@type": "AggregateRating",
+    "ratingValue": RATING_VALUE,
+    "reviewCount": str(REVIEW_COUNT),
+    "bestRating": RATING_BEST,
+    "worstRating": RATING_WORST,
+}
+
+
+def _jsonld(obj) -> str:
+    data = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    return f'<script type="application/ld+json">{data}</script>\n'
+
+
+def _faq_from_body(body: str):
+    """본문의 <div class="faq-item"><h3>Q</h3><p>A</p></div> 블록을 FAQPage로 변환."""
+    items = re.findall(
+        r'<div class="faq-item">\s*<h3>(.*?)</h3>\s*<p>(.*?)</p>',
+        body, flags=re.S)
+    qa = []
+    for q, a in items:
+        q = html.unescape(re.sub(r"<[^>]+>", "", q)).strip()
+        a = html.unescape(re.sub(r"<[^>]+>", "", a)).strip()
+        if q and a:
+            qa.append({
+                "@type": "Question", "name": q,
+                "acceptedAnswer": {"@type": "Answer", "text": a},
+            })
+    return qa
+
+
+def _breadcrumb_ld(crumbs, canonical):
+    elements = [{"@type": "ListItem", "position": 1, "name": "홈", "item": BASE + "/"}]
+    pos = 2
+    for label, href in crumbs:
+        item = (BASE + href) if href else canonical
+        elements.append({"@type": "ListItem", "position": pos, "name": label, "item": item})
+        pos += 1
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList",
+            "itemListElement": elements}
+
+
+def _reviews_ld():
+    out = []
+    for r in REVIEWS:
+        out.append({
+            "@type": "Review",
+            "author": {"@type": "Person", "name": r["name"]},
+            "datePublished": r["date"],
+            "reviewRating": {"@type": "Rating", "ratingValue": str(r["rating"]),
+                             "bestRating": "5", "worstRating": "1"},
+            "reviewBody": r["text"],
+            "itemReviewed": {"@type": "Service", "name": f"{r['theme']} 방문 관리"},
+        })
+    return out
+
+
+def structured_data(page: dict, path: str, canonical: str, noindex: bool) -> str:
+    """페이지 경로에 맞춰 JSON-LD 스크립트 묶음을 생성한다."""
+    blocks = []
+    crumbs = page.get("breadcrumb") or []
+
+    # 1) BreadcrumbList — 경로가 있는 모든 페이지
+    if crumbs:
+        blocks.append(_jsonld(_breadcrumb_ld(crumbs, canonical)))
+
+    # 2) FAQPage — 본문에 FAQ 블록이 있으면 자동
+    qa = _faq_from_body(page.get("body", ""))
+    if qa and not noindex:
+        blocks.append(_jsonld({"@context": "https://schema.org",
+                               "@type": "FAQPage", "mainEntity": qa}))
+
+    # 매거진 글은 자체 Article 스키마(extra_head)를 쓰므로 사업자 노드는 생략
+    if path.startswith("magazine/") and path != "magazine/":
+        return "".join(blocks)
+
+    # 3) 테마 상세 → Service
+    if path.startswith("themes/") and path != "themes/":
+        name = crumbs[-1][0] if crumbs else page.get("h1", "")
+        blocks.append(_jsonld({
+            "@context": "https://schema.org", "@type": "Service",
+            "serviceType": f"{name} 출장마사지·홈타이",
+            "name": f"은평 {name} 방문 관리",
+            "url": canonical,
+            "areaServed": {"@type": "AdministrativeArea", "name": "서울특별시 은평구"},
+            "provider": {**_BIZ_CORE, "url": BASE + "/", "aggregateRating": _AGG_RATING},
+            "offers": {
+                "@type": "AggregateOffer", "priceCurrency": "KRW",
+                "lowPrice": "90000", "highPrice": "180000",
+                "offerCount": "3",
+            },
+        }))
+        return "".join(blocks)
+
+    # 4) 그 외 페이지 → LocalBusiness 노드 (홈/지역/역/안내 공통)
+    biz = {"@context": "https://schema.org", **_BIZ_CORE,
+           "url": canonical, "aggregateRating": _AGG_RATING}
+
+    if path == "":  # 홈 — WebSite + 대표 LocalBusiness
+        biz["description"] = "은평구 전지역 방문 출장마사지·홈타이 예약 안내"
+        biz["@id"] = BASE + "/#business"
+        blocks.append(_jsonld({"@context": "https://schema.org", "@type": "WebSite",
+                               "name": BRAND, "url": BASE + "/",
+                               "inLanguage": "ko"}))
+        blocks.append(_jsonld(biz))
+    elif path.startswith("eunpyeong/") and path not in ("eunpyeong/", "eunpyeong/stations/"):
+        # 지역·역 상세 — 해당 동/역을 areaServed 로 명시
+        name = crumbs[-1][0] if crumbs else page.get("h1", "")
+        biz["areaServed"] = [
+            {"@type": "AdministrativeArea", "name": "서울특별시 은평구"},
+            {"@type": "Place", "name": f"서울특별시 은평구 {name} 일대"},
+        ]
+        biz["description"] = page.get("desc", "")
+        blocks.append(_jsonld(biz))
+    elif path == "reviews/":
+        biz["review"] = _reviews_ld()
+        blocks.append(_jsonld(biz))
+    else:
+        biz["description"] = page.get("desc", "")
+        blocks.append(_jsonld(biz))
+
+    return "".join(blocks)
+
+
+# ────────────────────────────────────────────────────────────
+#  내부 링크 강화 — 롱테일 주제 관련 링크 블록
+# ────────────────────────────────────────────────────────────
+_RL_THEMES = [
+    ("스웨디시", "/themes/swedish/"),
+    ("아로마", "/themes/aroma/"),
+    ("홈타이(타이마사지)", "/themes/thai/"),
+    ("스포츠·경락", "/themes/sports/"),
+    ("발마사지", "/themes/foot/"),
+    ("커플 마사지", "/themes/couple/"),
+    ("24시간 출장", "/themes/24hours/"),
+    ("수면 가능", "/themes/overnight/"),
+]
+_RL_AREAS = [
+    ("불광동", "/eunpyeong/bulgwang-dong/"),
+    ("응암동", "/eunpyeong/eungam-dong/"),
+    ("연신내·대조동", "/eunpyeong/daejo-dong/"),
+    ("진관동(은평뉴타운)", "/eunpyeong/jingwan-dong/"),
+    ("녹번동", "/eunpyeong/nokbeon-dong/"),
+    ("역촌동", "/eunpyeong/yeokchon-dong/"),
+]
+
+
+def _chip(label, href):
+    return f'<li><a href="{href}">{label}</a></li>'
+
+
+def related_block(page: dict, path: str) -> str:
+    """페이지 종류에 맞는 롱테일 내부 링크 블록(UI 카드)을 만든다."""
+    crumbs = page.get("breadcrumb") or []
+    subject = crumbs[-1][0] if crumbs else ""
+    chips = []
+
+    if path.startswith("eunpyeong/stations/") and path != "eunpyeong/stations/":
+        s = subject  # 예: "녹번역"
+        for label, href in _RL_THEMES:
+            chips.append(_chip(f"{s} 인근 {label}", href))
+        chips.append(_chip(f"{s} 예약 방법", "/reservation/"))
+        chips.append(_chip(f"{s} 코스·요금", "/courses/#price"))
+        chips.append(_chip("은평 지하철역별 안내 전체", "/eunpyeong/stations/"))
+    elif path.startswith("eunpyeong/") and path not in ("eunpyeong/", "eunpyeong/stations/"):
+        s = subject  # 예: "불광동"
+        for label, href in _RL_THEMES:
+            chips.append(_chip(f"{s} {label}", href))
+        chips.append(_chip(f"{s} 방문 예약 안내", "/reservation/"))
+        chips.append(_chip(f"{s} 코스·요금 보기", "/courses/#price"))
+        chips.append(_chip(f"{s} 이용 후기", "/reviews/#area"))
+    elif path.startswith("themes/") and path != "themes/":
+        s = subject  # 예: "스웨디시"
+        for label, href in _RL_AREAS:
+            chips.append(_chip(f"{label} {s}", href))
+        chips.append(_chip(f"{s} 코스·요금", "/courses/#price"))
+        chips.append(_chip(f"{s} 예약 방법", "/reservation/"))
+        chips.append(_chip(f"{s} 이용 후기", "/reviews/"))
+        chips.append(_chip("전체 테마 안내", "/themes/"))
+    elif path == "":
+        # 메인 — 가장 많이 찾는 롱테일 조합을 한 곳에 모은다
+        for label, href in [
+            ("불광동 출장마사지", "/eunpyeong/bulgwang-dong/"),
+            ("연신내 홈타이", "/eunpyeong/stations/yeonsinnae-station/"),
+            ("응암동 24시간 마사지", "/eunpyeong/eungam-dong/"),
+            ("은평뉴타운(진관동) 방문 관리", "/eunpyeong/jingwan-dong/"),
+            ("녹번역 인근 마사지", "/eunpyeong/stations/nokbeon-station/"),
+            ("커플 마사지 예약", "/themes/couple/"),
+            ("심야 24시간 출장", "/themes/24hours/"),
+            ("스웨디시 vs 타이마사지", "/magazine/swedish-vs-thai/"),
+        ]:
+            chips.append(_chip(label, href))
+    else:
+        return ""
+
+    return (
+        '<section class="related-links" aria-label="관련 안내">'
+        '<h2>이런 주제도 함께 찾아보세요</h2>'
+        f'<ul class="related-grid">{"".join(chips)}</ul>'
+        '</section>'
+    )
+
+
 def render_page(page: dict) -> str:
     path = page["path"]
     title = page["title"]
@@ -135,6 +364,12 @@ def render_page(page: dict) -> str:
         else '<meta name="robots" content="index,follow">'
     )
     canonical = BASE_URL.rstrip("/") + "/" + path
+
+    # 구조화 데이터(JSON-LD) — 페이지 종류별 일괄 생성
+    schema_html = structured_data(page, path, canonical, noindex)
+
+    # 내부 링크 강화 블록 — 본문 끝(요금/CTA 앞)에 삽입
+    body = body + related_block(page, path)
 
     # 히어로가 있는 페이지(메인)는 H1을 히어로 안에서 출력한다.
     if hero:
@@ -178,7 +413,7 @@ def render_page(page: dict) -> str:
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css">
-{extra_head}</head>
+{schema_html}{extra_head}</head>
 <body>
 <header class="site-header">
   <div class="header-accent" aria-hidden="true"></div>

@@ -1,12 +1,12 @@
 # 사이트 공통 설정
-BASE_URL = "https://eunpyeong-massage.pages.dev"
+BASE_URL = "https://eunpyeong-massage.netlify.app"
 
 BRAND = "간다GO"
 PHONE = "0508-202-4719"
 PHONE_DISPLAY = "0508-202-4719"
 
 # 검색엔진 소유확인 메타 (있을 때만 <head>에 출력)
-NAVER_VERIFICATION = "a223edb54a8c0adb9484a5aedc3a1f3afab5533c"
+NAVER_VERIFICATION = "d4924fbe8147322f13531043507ecae74e46e27b"
 GOOGLE_VERIFICATION = ""  # Google Search Console 확인 코드(있으면 입력)
 
 # IndexNow 키 — 빌드 시 /<KEY>.txt 키 파일을 자동 생성한다.

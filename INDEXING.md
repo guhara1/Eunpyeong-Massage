@@ -1,6 +1,6 @@
 # 색인(인덱싱) 운영 가이드 — 간다GO 은평 출장마사지
 
-도메인: **https://eunpyeong-massage.pages.dev** (Cloudflare Pages)
+도메인: **https://eunpyeong-massage.netlify.app** (Netlify)
 
 빌드(`python3 build.py`)가 자동 생성하는 색인 관련 파일:
 
@@ -19,12 +19,12 @@
 ## 1. 네이버 — 가장 빠른 색인
 
 홈페이지에 이미 소유확인 메타가 들어가 있습니다:
-`<meta name="naver-site-verification" content="a223edb54a8c0adb9484a5aedc3a1f3afab5533c">`
+`<meta name="naver-site-verification" content="d4924fbe8147322f13531043507ecae74e46e27b">`
 
-1. [네이버 서치어드바이저](https://searchadvisor.naver.com) → 사이트 등록 → `https://eunpyeong-massage.pages.dev`
+1. [네이버 서치어드바이저](https://searchadvisor.naver.com) → 사이트 등록 → `https://eunpyeong-massage.netlify.app`
 2. **소유확인**: HTML 태그 방식 선택(메타 이미 적용됨) → 확인
-3. **요청 → 사이트맵 제출**: `https://eunpyeong-massage.pages.dev/sitemap.xml`
-4. **요청 → RSS 제출**: `https://eunpyeong-massage.pages.dev/rss.xml`
+3. **요청 → 사이트맵 제출**: `https://eunpyeong-massage.netlify.app/sitemap.xml`
+4. **요청 → RSS 제출**: `https://eunpyeong-massage.netlify.app/rss.xml`
 5. **요청 → 웹페이지 수집**: 메인·주요 페이지 URL을 직접 넣어 수집 요청
 6. 네이버는 **IndexNow 참여사**이므로 아래 4번 스크립트로도 즉시 통보됩니다.
 
@@ -32,7 +32,7 @@
 
 ## 2. 구글 — Search Console
 
-1. [Search Console](https://search.google.com/search-console) → 속성 추가 → URL 접두어 `https://eunpyeong-massage.pages.dev`
+1. [Search Console](https://search.google.com/search-console) → 속성 추가 → URL 접두어 `https://eunpyeong-massage.netlify.app`
 2. 소유확인: **HTML 태그** 방식이 가장 간단합니다.
    - 발급받은 코드를 `content/site.py` 의 `GOOGLE_VERIFICATION = "..."` 에 입력 → `python3 build.py` → 배포 → 확인
    - (또는 Cloudflare DNS TXT 방식)
@@ -57,7 +57,7 @@
 
 ```bash
 # 새 글 1~수개만 통보 (권장)
-python3 scripts/indexnow_submit.py https://eunpyeong-massage.pages.dev/magazine/new-post/
+python3 scripts/indexnow_submit.py https://eunpyeong-massage.netlify.app/magazine/new-post/
 
 # 사이트맵 전체 통보 (대규모 갱신 시)
 python3 scripts/indexnow_submit.py --all
@@ -75,7 +75,7 @@ python3 scripts/indexnow_submit.py --all
 ```bash
 pip install google-auth requests
 export GOOGLE_APPLICATION_CREDENTIALS=/path/service-account.json
-python3 scripts/google_index.py https://eunpyeong-massage.pages.dev/magazine/new-post/
+python3 scripts/google_index.py https://eunpyeong-massage.netlify.app/magazine/new-post/
 ```
 
 사전: Cloud 프로젝트에서 Indexing API 활성화 → 서비스 계정 JSON 발급 →
@@ -96,6 +96,6 @@ IndexNow 를 권장하며 사실상 폐지했습니다. 즉 옛날식 사이트�
 
 1. `content/magazine.py` 에 글 추가 (`_post(...)`, 날짜 포함) → `PAGES` 에 등록
 2. `python3 build.py` → sitemap·rss·페이지 자동 갱신
-3. 커밋 & 푸시 → Cloudflare Pages 자동 배포
+3. 커밋 & 푸시 → Netlify 자동 배포
 4. `python3 scripts/indexnow_submit.py <새 글 URL>` 실행 (네이버·Bing 즉시 통보)
 5. (구글) Search Console URL 검사 → 색인 생성 요청

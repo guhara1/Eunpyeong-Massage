@@ -1,6 +1,37 @@
 # 안내성 페이지 — 출장마사지 허브, 코스, 예약, 가이드, 후기, 고객센터, 약관.
 # 하위 메뉴 항목은 별도 페이지 대신 앵커 섹션으로 운영해 얇은 페이지를 만들지 않는다.
 from .site import BRAND, PHONE, PHONE_DISPLAY
+from .reviews_data import REVIEWS, REVIEW_COUNT, RATING_VALUE
+
+
+def _stars(n: int) -> str:
+    return '<span class="stars" aria-hidden="true">' + "★" * n + "☆" * (5 - n) + "</span>"
+
+
+def _review_cards() -> str:
+    """후기 데이터 → 화면 카드. 별점·지역·테마·날짜를 함께 노출(스키마와 동일 데이터)."""
+    cards = []
+    for r in REVIEWS:
+        cards.append(
+            '<li class="review-card" itemscope itemtype="https://schema.org/Review">'
+            '<div class="review-head">'
+            f'<span class="review-author" itemprop="author">{r["name"]}</span>'
+            f'{_stars(r["rating"])}'
+            f'<time class="review-date" datetime="{r["date"]}" itemprop="datePublished">{r["date"].replace("-", ". ")}</time>'
+            '</div>'
+            '<div class="review-tags">'
+            f'<span class="review-tag area">{r["area"]}</span>'
+            f'<a class="review-tag theme" href="{r["theme_href"]}">{r["theme"]}</a>'
+            '</div>'
+            f'<p class="review-text" itemprop="reviewBody">{r["text"]}</p>'
+            '</li>'
+        )
+    return (
+        f'<div class="review-summary"><span class="rs-score">{RATING_VALUE}</span>'
+        f'<span class="rs-stars" aria-hidden="true">★★★★★</span>'
+        f'<span class="rs-count">실제 이용 확인 후기 {REVIEW_COUNT}건 평균</span></div>'
+        f'<ul class="review-list">{"".join(cards)}</ul>'
+    )
 
 _CTA = f"""
 <section class="cta">
@@ -299,6 +330,12 @@ REVIEWS = {
 <section>
 <h2>후기를 읽는 방법</h2>
 <p>후기를 고를 때는 본인과 비슷한 상황을 찾는 것이 가장 유용합니다. 같은 동네, 비슷한 주거 형태, 비슷한 목적의 후기가 별점 높은 후기보다 더 많은 것을 알려줍니다. 이를 돕기 위해 모든 후기에는 이용 지역, 받은 테마, 이용 시간대가 함께 표기됩니다. 예컨대 심야 이용을 고민 중이라면 밤 시간대 후기에서 도착 정확성과 조용한 진행에 대한 언급을, 부모님 선물을 고민 중이라면 대리 예약 후기에서 연락 과정에 대한 언급을 찾아보시면 됩니다. 글이 긴 후기일수록 구체적인 정보가 많으니 시간이 있다면 긴 후기부터 읽으시기를 권합니다.</p>
+</section>
+
+<section id="recent">
+<h2>최근 등록된 후기</h2>
+<p>실제 이용이 확인된 예약 건의 후기를 최신순으로 보여드립니다. 각 후기에는 이용 지역과 받은 테마를 함께 표기했으며, 테마 이름을 누르면 해당 안내 페이지로 이동합니다.</p>
+""" + _review_cards() + """
 </section>
 
 <section id="area">

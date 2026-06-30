@@ -14,7 +14,7 @@
 
 사용법:
   export GOOGLE_APPLICATION_CREDENTIALS=/path/service-account.json
-  python3 scripts/google_index.py https://eunpyeong-massage.pages.dev/magazine/new-post/
+  python3 scripts/google_index.py https://eunpyeong-massage.netlify.app/magazine/new-post/
   python3 scripts/google_index.py --all     # 사이트맵 전체
 """
 import os

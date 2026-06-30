@@ -9,7 +9,7 @@ URL 변경을 즉시 알린다. Google은 IndexNow 미참여 — google_index.py
   python3 scripts/indexnow_submit.py --all
 
   # 특정 URL만 통보 (글 1~수개 올렸을 때 권장)
-  python3 scripts/indexnow_submit.py https://eunpyeong-massage.pages.dev/magazine/new-post/
+  python3 scripts/indexnow_submit.py https://eunpyeong-massage.netlify.app/magazine/new-post/
 
 키 파일(/<KEY>.txt)이 도메인 루트에 배포되어 있어야 한다. build.py 가 자동 생성한다.
 """
